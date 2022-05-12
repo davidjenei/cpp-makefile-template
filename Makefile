@@ -8,6 +8,9 @@ else
 export VERBOSE := 0
 endif
 
+CPPCHECK = cppcheck
+BEAR = bear
+
 CXXFLAGS = -std=c++17 -Wall
 LDFLAGS =
 
@@ -63,7 +66,6 @@ release: all
 clean:
 	-@rm -rvf $(BUILD_DIR)
 
-CPPCHECK := cppcheck
 CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
 cppcheck:
 	$(Q) $(CPPCHECK) $(CPPCHECKFLAGS) $(SRC) $(SRC_TESTS) $(INCLUDE)
@@ -74,7 +76,6 @@ ifneq ($(SANITIZER),none)
 	CXXFLAGS += -fsanitize=$(SANITIZER)
 endif
 
-BEAR := bear
 bear:
 	@command -v $(BEAR) || (echo ERROR: $(BEAR) not found in path; exit 1)
 	$(Q) $(BEAR) -- $(MAKE) clean all test
