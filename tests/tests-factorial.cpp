@@ -12,3 +12,7 @@ TEST_CASE( "Factorials are computed", "[factorial]" ) {
 TEST_CASE( "One added", "[factorial]" ) {
     REQUIRE( AddOne(1) == 2 );
 }
+
+TEST_CASE( "Leak", "[leak]" ) {
+     REQUIRE_NOTHROW( Leak() );
+}

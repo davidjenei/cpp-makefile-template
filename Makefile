@@ -32,7 +32,10 @@ SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
 .PHONY: all
-all: $(EXEC) $(TEST_EXEC)
+all: $(EXEC)
+
+.PHONY: test
+test: $(TEST_EXEC)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)
@@ -60,17 +63,34 @@ debug: all
 release: CXXFLAGS += -O2
 release: all
 
-.PHONY : clean
+.PHONY: clean
 clean:
 	-@rm -rvf $(BUILD_DIR)
 
-.PHONY : help
-help :
+CPPCHECK := cppcheck
+CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
+.PHONY: cppcheck
+cppcheck:
+	$(Q) $(CPPCHECK) $(CPPCHECKFLAGS) $(SRC) $(SRC_TESTS) $(INCLUDE)
+
+# Note: Links dynamic by default. Use eg. -static-libasan if it's not desirable.
+SANITIZER ?= none
+ifneq ($(SANITIZER),none)
+	CXXFLAGS += -fsanitize=$(SANITIZER)
+endif
+
+.PHONY: help
+help:
 	@echo "usage: make [OPTIONS] <target>"
 	@echo "  Options:"
 	@echo "    > VERBOSE Show verbose output for Make rules. Default 1. Disable with 0."
+	@echo "    > SANITIZER Compile with GCC sanitizer. Default none. Options: address, thread, etc."
 	@echo "Targets:"
-	@echo "  debug: Builds all default targets ninja knows about"
-	@echo "  release: Build and run unit test programs"
-	@echo "Static analysis:"
-	@echo "  TODO: cppcheck"
+	@echo "  debug: Builds all with debug flags"
+	@echo "  release: Build with optimiser"
+	@echo "Static analysers:"
+	@echo "  cppcheck: Runs cppcheck"
+	@echo "  clang-analyser: TODO"
+	@echo "  clang-tidy: TODO"
+	@echo "  sloccount: TODO"
+
