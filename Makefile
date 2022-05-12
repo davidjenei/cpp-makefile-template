@@ -10,6 +10,7 @@ endif
 
 CPPCHECK = cppcheck
 BEAR = bear
+CLANG_FORMAT = clang-format-12
 
 CXXFLAGS = -std=c++17 -Wall
 LDFLAGS =
@@ -34,7 +35,7 @@ DEPS = $(OBJ:.o=.d)
 SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
-.PHONY: all test debug release clean cppcheck bear help
+.PHONY: all test debug release clean cppcheck bear help format-dry
 
 all: $(EXEC)
 test: $(TEST_EXEC)
@@ -77,8 +78,12 @@ ifneq ($(SANITIZER),none)
 endif
 
 bear:
-	@command -v $(BEAR) || (echo ERROR: $(BEAR) not found in path; exit 1)
+	@command -v $(BEAR) >/dev/null || (echo ERROR: $(BEAR) not found in path; exit 1)
 	$(Q) $(BEAR) -- $(MAKE) clean all test
+
+format-dry:
+	@command -v $(CLANG_FORMAT) >/dev/null || (echo ERROR: $(CLANG_FORMAT) not found in path; exit 1)
+	@$(CLANG_FORMAT) --dry-run $(SRC) $(SRC_TESTS)
 
 help:
 	@echo "usage: make [OPTIONS] <target>"
@@ -96,5 +101,5 @@ help:
 	@echo "  gcov: TODO"
 	@echo "Helpers: "
 	@echo "  bear: Generate compilation database for clang tooling"
-	@echo "  clang-format: Run clang-format on all source files"
+	@echo "  format-dry: Dry run clang-format on all sources"
 
