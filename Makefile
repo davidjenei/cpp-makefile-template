@@ -1,3 +1,13 @@
+VERBOSE ?= 1
+
+ifeq ($(VERBOSE),1)
+	export Q :=
+export VERBOSE := 1
+else
+	export Q := @
+export VERBOSE := 0
+endif
+
 CXXFLAGS = -std=c++17 -Wall
 LDFLAGS =
 
@@ -26,19 +36,19 @@ all: $(EXEC) $(TEST_EXEC)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
+	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
 $(EXEC): $(OBJ)
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
+	$(Q) $(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
 
 $(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
-	$(AR) rcs $(LIB) $^
+	$(Q) $(AR) rcs $(LIB) $^
 
 $(TEST_EXEC): INCLUDE := $(INCLUDE) -I/usr/include/catch2
 $(TEST_EXEC): $(OBJ_TESTS) $(LIB)
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
+	$(Q) $(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
 
 -include $(DEPS)
 
