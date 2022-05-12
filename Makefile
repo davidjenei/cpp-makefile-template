@@ -11,6 +11,7 @@ endif
 CPPCHECK = cppcheck
 BEAR = bear
 CLANG_FORMAT = clang-format-12
+GCOV = gcov
 
 CXXFLAGS = -std=c++17 -Wall
 LDFLAGS =
@@ -85,6 +86,12 @@ format-dry:
 	@command -v $(CLANG_FORMAT) >/dev/null || (echo ERROR: $(CLANG_FORMAT) not found in path; exit 1)
 	@$(CLANG_FORMAT) --dry-run $(SRC) $(SRC_TESTS)
 
+gcov: CXXFLAGS += -O0 -fprofile-arcs -ftest-coverage
+gcov: test
+gcov:
+	./$(TEST_EXEC)
+	$(GCOV) -t -o $(OBJ_DIR)/src $(SRC)
+
 help:
 	@echo "usage: make [OPTIONS] <target>"
 	@echo "  Options:"
@@ -98,7 +105,7 @@ help:
 	@echo "  cppcheck: Run cppcheck"
 	@echo "  clang-tidy: TODO"
 	@echo "  sloccount: TODO"
-	@echo "  gcov: TODO"
+	@echo "  gcov: Calculate test coverage"
 	@echo "Helpers: "
 	@echo "  bear: Generate compilation database for clang tooling"
 	@echo "  format-dry: Dry run clang-format on all sources"
