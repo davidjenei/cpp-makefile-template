@@ -37,27 +37,28 @@ DEPS = $(OBJ:.o=.d)
 SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
-.PHONY: all test debug release clean cppcheck bear help format-dry force
-
 LDFLAGS += $(shell $(PKG_CONFIG) --libs libpng)
 CXXFLAGS += -I/usr/include/png++
+
+.PHONY: all test debug release clean cppcheck bear help format-dry force
 
 all: $(EXEC)
 test: $(TEST_EXEC)
 
-$(OBJ_DIR)/%.o: %.cpp build/cxx_flags
+$(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/cxx_flags
 	@mkdir -p $(@D)
 	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
-$(EXEC): $(OBJ)
-	@mkdir -p $(@D)
+$(EXEC_DIR):
+	mkdir -p $(@)
+
+$(EXEC): $(OBJ) | $(EXEC_DIR)
 	$(Q) $(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
 
 $(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
 	$(Q) $(AR) rcs $(LIB) $^
 
-$(TEST_EXEC): $(OBJ_TESTS) $(LIB)
-	@mkdir -p $(@D)
+$(TEST_EXEC): $(OBJ_TESTS) $(LIB) | $(EXEC_DIR)
 	$(Q) $(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
 
 $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
@@ -80,7 +81,7 @@ ifneq ($(SANITIZER),none)
 endif
 
 define check_exec
-	command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path; exit 1)
+	@command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path; exit 1)
 endef
 
 CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
@@ -105,8 +106,7 @@ gcovr:
 	$(call check_exec, $(GCOVR))
 	$(GCOVR) --object-directory=$(OBJ_DIR)
 
-build/cxx_flags: force
-	@mkdir -p $(@D)
+build/cxx_flags: force | $(EXEC_DIR)
 	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
 
 help:
