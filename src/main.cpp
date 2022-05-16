@@ -1,13 +1,11 @@
 #include <iostream>
 #include <ostream>
 
-#include "hidden.h"
 #include "image.hpp"
 
 int main()
 {
     std::cout << "Hello world!" << std::endl;
-    std::cout << hidden << std::endl;
 
     size_t const width = 32;
     size_t const height = 32;
