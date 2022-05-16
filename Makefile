@@ -12,8 +12,9 @@ CPPCHECK = cppcheck
 BEAR = bear
 CLANG_FORMAT = clang-format-12
 GCOVR = gcovr
+PKG_CONFIG = pkg-config
 
-CXXFLAGS = -std=c++17 -Wall
+CXXFLAGS = -std=c++17
 LDFLAGS =
 
 BUILD_DIR = build
@@ -36,12 +37,15 @@ DEPS = $(OBJ:.o=.d)
 SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
-.PHONY: all test debug release clean cppcheck bear help format-dry
+.PHONY: all test debug release clean cppcheck bear help format-dry force
+
+LDFLAGS += $(shell $(PKG_CONFIG) --libs libpng)
+CXXFLAGS += -I/usr/include/png++
 
 all: $(EXEC)
 test: $(TEST_EXEC)
 
-$(OBJ_DIR)/%.o: %.cpp
+$(OBJ_DIR)/%.o: %.cpp build/cxx_flags
 	@mkdir -p $(@D)
 	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
@@ -52,10 +56,11 @@ $(EXEC): $(OBJ)
 $(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
 	$(Q) $(AR) rcs $(LIB) $^
 
-$(TEST_EXEC): INCLUDE := $(INCLUDE)
 $(TEST_EXEC): $(OBJ_TESTS) $(LIB)
 	@mkdir -p $(@D)
 	$(Q) $(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
+
+$(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
 
 -include $(DEPS)
 
@@ -68,22 +73,27 @@ release: all
 clean:
 	-@rm -rvf $(BUILD_DIR)
 
-CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
-cppcheck:
-	$(CPPCHECK) $(CPPCHECKFLAGS) $(SRC) $(SRC_TESTS) $(INCLUDE)
-
 # Note: Links dynamic by default. Use eg. -static-libasan if it's not desirable.
 SANITIZER ?= none
 ifneq ($(SANITIZER),none)
 	CXXFLAGS += -fsanitize=$(SANITIZER)
 endif
 
+define check_exec
+	command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path; exit 1)
+endef
+
+CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
+cppcheck:
+	$(call check_exec, $(CPPCHECK))
+	$(CPPCHECK) $(CPPCHECKFLAGS) $(SRC) $(SRC_TESTS) $(INCLUDE)
+
 bear:
-	@command -v $(BEAR) >/dev/null || (echo ERROR: $(BEAR) not found in path; exit 1)
+	$(call check_exec, $(BEAR))
 	$(Q) $(BEAR) -- $(MAKE) clean all test
 
 format-dry:
-	@command -v $(CLANG_FORMAT) >/dev/null || (echo ERROR: $(CLANG_FORMAT) not found in path; exit 1)
+	$(call check_exec, $(CLANG_FORMAT))
 	@$(CLANG_FORMAT) --dry-run $(SRC) $(SRC_TESTS)
 
 coverage: CXXFLAGS += -O0 --coverage -g
@@ -92,7 +102,12 @@ coverage:
 	./$(TEST_EXEC)
 
 gcovr:
+	$(call check_exec, $(GCOVR))
 	$(GCOVR) --object-directory=$(OBJ_DIR)
+
+build/cxx_flags: force
+	@mkdir -p $(@D)
+	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
 
 help:
 	@echo "usage: make [OPTIONS] <target>"
