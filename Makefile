@@ -28,8 +28,8 @@ LIB = $(OBJ_DIR)/lib$(PROJECT).a
 
 INCLUDE = -Iinclude/
 SRC = \
-   $(wildcard src/submodule/*.cpp) \
-   $(wildcard src/*.cpp)
+	$(wildcard src/submodule/*.cpp) \
+	$(wildcard src/*.cpp)
 
 OBJ = $(SRC:%.cpp=$(OBJ_DIR)/%.o)
 DEPS = $(OBJ:.o=.d)
@@ -50,7 +50,7 @@ $(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/cxx_flags
 	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
 $(EXEC_DIR):
-	mkdir -p $(@)
+	$(Q) mkdir -p $(@)
 
 $(EXEC): $(OBJ) | $(EXEC_DIR)
 	$(Q) $(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
@@ -72,7 +72,7 @@ release: CXXFLAGS += -O2
 release: all
 
 clean:
-	-@rm -rvf $(BUILD_DIR)
+	-$(RM) -vr $(BUILD_DIR)
 
 # Note: Links dynamic by default. Use eg. -static-libasan if it's not desirable.
 SANITIZER ?= none
@@ -81,7 +81,7 @@ ifneq ($(SANITIZER),none)
 endif
 
 define check_exec
-	@command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path; exit 1)
+	@command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path >&2; exit 1)
 endef
 
 CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
@@ -108,6 +108,31 @@ gcovr:
 
 build/cxx_flags: force | $(EXEC_DIR)
 	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
+
+print-%:
+	@echo $* = $($*)
+
+cmd_controlfile = { \
+	echo "Package: hello-world"; \
+	echo "Version: 0.0.1"; \
+	echo "Maintainer: example <example@example.com>"; \
+	echo "Depends: libc6"; \
+	echo "Architecture: amd64"; \
+	echo "Homepage: http://example.com"; \
+	echo "Description: A program that prints hello"; \
+	} > $(DEB_DIR)/DEBIAN/control
+
+DEB_DIR = $(BUILD_DIR)/hello-world_0.0.1-1
+DEB_CONTROL = $(DEB_DIR)/DEBIAN/control
+
+$(DEB_CONTROL):
+	$(Q) mkdir -p $(@D)
+	$(call cmd_controlfile)
+
+.PHONY: deb
+deb: $(EXEC) $(DEB_CONTROL)
+	cp $(EXEC) $(DEB_DIR)
+	dpkg --build $(DEB_DIR)
 
 help:
 	@echo "usage: make [OPTIONS] <target>"
