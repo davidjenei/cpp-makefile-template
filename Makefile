@@ -1,3 +1,8 @@
+.PHONY: all test debug release clean cppcheck bear help format-dry force tar
+
+PROJECT = example
+VERSION = 1.0.0
+
 VERBOSE ?= 1
 
 ifeq ($(VERBOSE),1)
@@ -8,25 +13,33 @@ else
 export VERBOSE := 0
 endif
 
+# External tools
 CPPCHECK = cppcheck
 BEAR = bear
-CLANG_FORMAT = clang-format-12
+CLANG_FORMAT = clang-format
+CLANG_TIDY = clang-tidy
 GCOVR = gcovr
 PKG_CONFIG = pkg-config
+MKDIR = @mkdir -p
+INSTALL = install
 
-CXXFLAGS = -std=c++17
-LDFLAGS =
-
+# Output directories
 BUILD_DIR = build
+DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 OBJ_DIR = $(BUILD_DIR)/objects
 EXEC_DIR = $(BUILD_DIR)/exec
 
-PROJECT = example
+# Artifact
 EXEC = $(EXEC_DIR)/$(PROJECT)
 TEST_EXEC = $(EXEC_DIR)/tests
 LIB = $(OBJ_DIR)/lib$(PROJECT).a
+TAR = $(BUILD_DIR)/$(PROJECT).tar.gz
 
+# Compiler flags
+CXXFLAGS = -std=c++17
+LDFLAGS =
 INCLUDE = -Iinclude/
+
 SRC = \
 	$(wildcard src/submodule/*.cpp) \
 	$(wildcard src/*.cpp)
@@ -37,20 +50,19 @@ DEPS = $(OBJ:.o=.d)
 SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
-LDFLAGS += $(shell $(PKG_CONFIG) --libs libpng)
+LIBPNG != $(PKG_CONFIG) --libs libpng		# Use this instead of shell()
+LDFLAGS += $(LIBPNG)
 CXXFLAGS += -I/usr/include/png++
-
-.PHONY: all test debug release clean cppcheck bear help format-dry force
 
 all: $(EXEC)
 test: $(TEST_EXEC)
 
 $(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/cxx_flags
-	@mkdir -p $(@D)
+	$(MKDIR) $(@D)
 	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
 $(EXEC_DIR):
-	$(Q) mkdir -p $(@)
+	$(MKDIR) $(@)
 
 $(EXEC): $(OBJ) | $(EXEC_DIR)
 	$(Q) $(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
@@ -65,7 +77,7 @@ $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
 
 -include $(DEPS)
 
-debug: CXXFLAGS += -DDEBUG -g
+debug: CXXFLAGS += -DDEBUG -g3
 debug: all
 
 release: CXXFLAGS += -O2
@@ -74,11 +86,23 @@ release: all
 clean:
 	-$(RM) -vr $(BUILD_DIR)
 
+$(TAR).sha512: $(TAR)
+	openssl dgst -sha512 -hex $(TAR) >$@
+
+$(TAR):
+	$(MKDIR) $(@D)
+	$(MKDIR) $(DIST_DIR)
+	$(INSTALL) -m 0644 $(SRC) $(DIST_DIR)
+	$(INSTALL) -m 0644 Makefile LICENSE.md $(DIST_DIR)
+	tar zcf $@ $(DIST_DIR)
+	$(RM) -rf $(DIST_DIR)
+
 # Note: Links dynamic by default. Use eg. -static-libasan if it's not desirable.
-SANITIZER ?= none
-ifneq ($(SANITIZER),none)
-	CXXFLAGS += -fsanitize=$(SANITIZER)
-endif
+debug-tsan: CXXFLAGS += -fsanitize=thread
+debug-tsan: debug
+
+debug-asan: CXXFLAGS += -fsanitize=address
+debug-asan: debug
 
 define check_exec
 	@command -v $(1) >/dev/null || (echo ERROR: $(1) not found in path >&2; exit 1)
@@ -99,10 +123,9 @@ format-dry:
 
 coverage: CXXFLAGS += -O0 --coverage -g
 coverage: test
-coverage:
-	./$(TEST_EXEC)
 
-gcovr:
+gcovr: coverage
+	./$(TEST_EXEC)
 	$(call check_exec, $(GCOVR))
 	$(GCOVR) --object-directory=$(OBJ_DIR)
 
@@ -112,27 +135,10 @@ build/cxx_flags: force | $(EXEC_DIR)
 print-%:
 	@echo $* = $($*)
 
-cmd_controlfile = { \
-	echo "Package: hello-world"; \
-	echo "Version: 0.0.1"; \
-	echo "Maintainer: example <example@example.com>"; \
-	echo "Depends: libc6"; \
-	echo "Architecture: amd64"; \
-	echo "Homepage: http://example.com"; \
-	echo "Description: A program that prints hello"; \
-	} > $(DEB_DIR)/DEBIAN/control
+info-%:
+	$(MAKE) --no-print-directory --dry-run --always-make $*
 
-DEB_DIR = $(BUILD_DIR)/hello-world_0.0.1-1
-DEB_CONTROL = $(DEB_DIR)/DEBIAN/control
-
-$(DEB_CONTROL):
-	$(Q) mkdir -p $(@D)
-	$(call cmd_controlfile)
-
-.PHONY: deb
-deb: $(EXEC) $(DEB_CONTROL)
-	cp $(EXEC) $(DEB_DIR)
-	dpkg --build $(DEB_DIR)
+tar: $(TAR) $(TAR).sha512
 
 help:
 	@echo "usage: make [OPTIONS] <target>"
@@ -152,4 +158,6 @@ help:
 	@echo "Helpers: "
 	@echo "  bear: Generate compilation database for clang tooling"
 	@echo "  format-dry: Dry run clang-format on all sources"
+	@echo "  print-%: Print value"
+	@echo "  info-%: Print recipe"
 
