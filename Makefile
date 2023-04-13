@@ -9,6 +9,8 @@ VERSION = 1.0.0
 # # - formatter
 # # - metrics
 # # - sanitizers
+# # Note: The code has intentional bugs in order to test the tools.
+# # TODO: -D_GLIBCXX_ASSERTIONS
 
 .PHONY: all test debug release clean cppcheck bear help format-dry force tar require tools
 
@@ -22,7 +24,7 @@ else
 export VERBOSE := 0
 endif
 
-# List required toools
+# Required tools
 CPPCHECK = cppcheck
 BEAR = bear
 CLANG_FORMAT = clang-format
@@ -88,10 +90,13 @@ $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
 
 -include $(DEPS)
 
+harden: CXXFLAGS += -D_GLIBCXX_ASSERTIONS
+harden: debug
+
 debug: CXXFLAGS += -DDEBUG -g3
 debug: all
 
-release: CXXFLAGS += -O2
+release: CXXFLAGS += -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong
 release: all
 
 clean:
@@ -168,9 +173,10 @@ help:
 	@echo "usage: make [OPTIONS] <target>"
 	@echo "  Options:"
 	@echo "    > VERBOSE Show verbose output for Make rules. Default 1. Disable with 0."
-	@echo "    > SANITIZER Compile with GCC sanitizer. Default none. Options: address, thread, etc."
 	@echo "Targets:"
 	@echo "  debug: Builds all with debug flags"
+	@echo "  debug-tsan: Builds all with debug and threadsanitizer"
+	@echo "  debug-asan: Builds all with debug and address-sanitizer"
 	@echo "  release: Build with optimiser"
 	@echo "  test: Build test executable"
 	@echo "Static analysers:"
@@ -184,5 +190,5 @@ help:
 	@echo "  format-dry: Dry run clang-format on all sources"
 	@echo "  print-%: Print value"
 	@echo "  info-%: Print recipe"
-	@echo "  tar: Package source files
+	@echo "  tar: Package source files"
 
