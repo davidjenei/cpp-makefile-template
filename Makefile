@@ -1,60 +1,58 @@
 PROJECT = example
 VERSION = 1.0.0
 
-# *DOCUMENTATION*
-# # To see a list of typical targets execute "make help"
-# # This is a minimal C++ Makefile projects with some extra targets invoking
-# # tools I find useful:
-# # - linters
-# # - formatter
-# # - metrics
-# # - sanitizers
-# # Note: The code has intentional bugs in order to test the tools.
-# # TODO: -D_GLIBCXX_ASSERTIONS
+# TODO: -D_GLIBCXX_ASSERTIONS
 
 .PHONY: all test debug release clean cppcheck bear help format-dry force tar require tools
 
-VERBOSE ?= 1
-
-ifeq ($(VERBOSE),1)
-	export Q :=
-export VERBOSE := 1
-else
-	export Q := @
-export VERBOSE := 0
-endif
-
-# Required tools
+#################################################################################
+# Tooling
+#################################################################################
 CPPCHECK = cppcheck
 BEAR = bear
 CLANG_FORMAT = clang-format
 CLANG_TIDY = clang-tidy
 GCOVR = gcovr
 PKG_CONFIG = pkg-config
-MKDIR = @mkdir -p
 INSTALL = install
 COUNT = sloccount
+MKDIR = mkdir -p
 
-# Output directories
-BUILD_DIR = build
-DIST_DIR = .dist/$(PROJECT)-$(VERSION)
-OBJ_DIR = $(BUILD_DIR)/objects
-EXEC_DIR = $(BUILD_DIR)/exec
-
-# Artifact filenames
+#################################################################################
+# Artifacts
+#################################################################################
 EXEC = $(EXEC_DIR)/$(PROJECT)
+EXEC_DIR = $(BUILD_DIR)/exec
+BUILD_DIR = build
+
 TEST_EXEC = $(EXEC_DIR)/tests
 LIB = $(OBJ_DIR)/lib$(PROJECT).a
+
+DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 TAR = $(BUILD_DIR)/$(PROJECT).tar.gz
 
-# Compiler flags
+#################################################################################
+# Compiler and linker settings
+#################################################################################
+
 CXXFLAGS = -std=c++17
 LDFLAGS =
 INCLUDE = -Iinclude/
 
+LIBPNG != $(PKG_CONFIG) --libs libpng # Use this instead of shell()
+LDFLAGS += $(LIBPNG)
+INCLUDE += -I/usr/include/png++
+
+#################################################################################
+# Sources and objects
+#################################################################################
+
 SRC = \
 	$(wildcard src/submodule/*.cpp) \
 	$(wildcard src/*.cpp)
+
+OBJ_DIR = $(BUILD_DIR)/objects
+OBJ_DIRS = $(addprefix $(OBJ_DIR)/, $(sort $(dir $(SRC))))
 
 OBJ = $(SRC:%.cpp=$(OBJ_DIR)/%.o)
 DEPS = $(OBJ:.o=.d)
@@ -62,28 +60,23 @@ DEPS = $(OBJ:.o=.d)
 SRC_TESTS = $(wildcard tests/*.cpp)
 OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 
-LIBPNG != $(PKG_CONFIG) --libs libpng # Use this instead of shell()
-LDFLAGS += $(LIBPNG)
-INCLUDE += -I/usr/include/png++
-
 all: $(EXEC)
 test: $(TEST_EXEC)
 
-$(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/.cxx_flags
-	$(MKDIR) $(@D)
-	$(Q) $(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
+$(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/.cxx_flags | $(OBJ_DIRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
-$(EXEC_DIR):
+$(EXEC_DIR) $(OBJ_DIRS):
 	$(MKDIR) $(@)
 
 $(EXEC): $(OBJ) | $(EXEC_DIR)
-	$(Q) $(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
 
 $(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
-	$(Q) $(AR) rcs $(LIB) $^
+	$(AR) rcs $(LIB) $^
 
 $(TEST_EXEC): $(OBJ_TESTS) $(LIB) | $(EXEC_DIR)
-	$(Q) $(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
+	$(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
 
 # Set a flag for a specific object
 $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
@@ -138,7 +131,7 @@ tidy: tools
 
 bear: TOOLS += $(BEAR)
 bear: tools
-	$(Q) $(BEAR) -- $(MAKE) clean all test
+	$(BEAR) -- $(MAKE) clean all test
 
 format-dry: TOOLS += $(CLANG_FORMAT)
 format-dry: tools
