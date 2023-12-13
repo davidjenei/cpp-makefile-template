@@ -1,73 +1,55 @@
 PROJECT = example
 VERSION = 1.0.0
 
-# TODO: -D_GLIBCXX_ASSERTIONS
-
-.PHONY: all test debug release clean cppcheck bear help format-dry force tar require tools
-
-#################################################################################
-# Tooling
-#################################################################################
-CPPCHECK = cppcheck
-BEAR = bear
-CLANG_FORMAT = clang-format
-CLANG_TIDY = clang-tidy
-GCOVR = gcovr
-PKG_CONFIG = pkg-config
-INSTALL = install
-COUNT = sloccount
-MKDIR = mkdir -p
-
-#################################################################################
-# Artifacts
-#################################################################################
-EXEC = $(EXEC_DIR)/$(PROJECT)
 EXEC_DIR = $(BUILD_DIR)/exec
-BUILD_DIR = build
+EXEC = $(EXEC_DIR)/$(PROJECT)
 
 TEST_EXEC = $(EXEC_DIR)/tests
 LIB = $(OBJ_DIR)/lib$(PROJECT).a
 
-DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 TAR = $(BUILD_DIR)/$(PROJECT).tar.gz
+
+BUILD_DIR = build
+DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 
 #################################################################################
 # Compiler and linker settings
 #################################################################################
 
+# TODO: -D_GLIBCXX_ASSERTIONS
 CXXFLAGS = -std=c++17
 LDFLAGS =
 INCLUDE = -Iinclude/
 
-LIBPNG != $(PKG_CONFIG) --libs libpng # Use this instead of shell()
+LIBPNG != pkg-config --libs libpng
 LDFLAGS += $(LIBPNG)
-INCLUDE += -I/usr/include/png++
 
 #################################################################################
 # Sources and objects
 #################################################################################
 
-SRC = \
-	$(wildcard src/submodule/*.cpp) \
-	$(wildcard src/*.cpp)
+SRC_DIRS = src src/submodule
+SRC != find $(SRC_DIRS) -name '*.cpp' -or -name '*.c' -or -name '*.s'
+
+TEST_DIR = tests
+SRC_TESTS != find $(TEST_DIR) -name '*.cpp' -or -name '*.c' -or -name '*.s'
 
 OBJ_DIR = $(BUILD_DIR)/objects
-OBJ_DIRS = $(addprefix $(OBJ_DIR)/, $(sort $(dir $(SRC))))
+OBJ_DIRS = $(addprefix $(OBJ_DIR)/, $(sort $(dir $(SRC) $(SRC_TESTS))))
 
 OBJ = $(SRC:%.cpp=$(OBJ_DIR)/%.o)
+OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 DEPS = $(OBJ:.o=.d)
 
-SRC_TESTS = $(wildcard tests/*.cpp)
-OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
-
+.PHONY: all test
 all: $(EXEC)
 test: $(TEST_EXEC)
 
-$(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/.cxx_flags | $(OBJ_DIRS)
-	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
-
 $(EXEC_DIR) $(OBJ_DIRS):
 	$(MKDIR) $(@)
+
+$(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/.cxx_flags | $(OBJ_DIRS)
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -MMD -o $@
 
 $(EXEC): $(OBJ) | $(EXEC_DIR)
 	$(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
@@ -81,8 +63,13 @@ $(TEST_EXEC): $(OBJ_TESTS) $(LIB) | $(EXEC_DIR)
 # Set a flag for a specific object
 $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
 
+.PHONY: force
+build/.cxx_flags: force | $(EXEC_DIR)
+	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
+
 -include $(DEPS)
 
+.PHONY: harden debug release debug-tsan debug-asan
 harden: CXXFLAGS += -D_GLIBCXX_ASSERTIONS
 harden: debug
 
@@ -92,42 +79,34 @@ debug: all
 release: CXXFLAGS += -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong
 release: all
 
-clean:
-	-$(RM) -vr $(BUILD_DIR)
-
-$(TAR).sha512: $(TAR)
-	openssl dgst -sha512 -hex $(TAR) >$@
-
-$(TAR):
-	$(MKDIR) $(@D)
-	$(MKDIR) $(DIST_DIR)
-	$(INSTALL) -m 0644 $(SRC) $(DIST_DIR)
-	$(INSTALL) -m 0644 Makefile LICENSE.md $(DIST_DIR)
-	tar zcf $@ $(DIST_DIR)
-	$(RM) -rf $(DIST_DIR)
-
-# Note: Links dynamic by default. Use eg. -static-libasan if it's not desirable
 debug-tsan: CXXFLAGS += -fsanitize=thread
 debug-tsan: debug
 
 debug-asan: CXXFLAGS += -fsanitize=address
 debug-asan: debug
 
-tools:
-	@for i in $(TOOLS); do \
-		command -v $$i >/dev/null \
-			|| (echo ERROR: $$i not found in path >&2; exit 1); \
-	done
+#################################################################################
+# Tooling
+#################################################################################
+.PHONY: cppcheck tidy bear format-dry coverage gcovr count
+
+CPPCHECK = cppcheck
+BEAR = bear
+CLANG_FORMAT = clang-format
+CLANG_TIDY = clang-tidy
+GCOVR = gcovr
+INSTALL = install
+COUNT = sloccount
+MKDIR = @mkdir -p
 
 CPPCHECKFLAGS += --enable=style,warning --cppcheck-build-dir=$(BUILD_DIR) --std=c++17
-
 cppcheck: TOOLS += $(CPPCHECK)
 cppcheck: tools
 	$(CPPCHECK) $(CPPCHECKFLAGS) $(SRC) $(SRC_TESTS) $(INCLUDE)
 
 tidy: TOOLS += $(CLANG_TIDY)
 tidy: tools
-	$(CLANG_TIDY) --extra-arg="$(CXXFLAGS)" -extra-arg=$(INCLUDE) $(SRC)
+	$(CLANG_TIDY) --extra-arg="$(CXXFLAGS)" --extra-arg="$(INCLUDE)" --system-headers $(SRC)
 
 bear: TOOLS += $(BEAR)
 bear: tools
@@ -145,8 +124,22 @@ gcovr: tools coverage
 	./$(TEST_EXEC)
 	$(GCOVR) --object-directory=$(OBJ_DIR)
 
-build/.cxx_flags: force | $(EXEC_DIR)
-	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
+count: TOOLS += $(COUNT)
+count: tools
+	$(COUNT) src tests
+
+#################################################################################
+# Helpers
+#################################################################################
+.PHONY: clean tools print-% info-% help tar
+
+clean:
+	-@$(RM) -vr $(BUILD_DIR)
+
+tools:
+	@for i in $(TOOLS); do command -v $$i >/dev/null \
+		|| (echo ERROR: Install $$i first >&2; exit 1); \
+	done
 
 print-%:
 	@echo $* = $($*)
@@ -154,18 +147,21 @@ print-%:
 info-%:
 	$(MAKE) --no-print-directory --dry-run --always-make $*
 
-tar: TOOLS += $(TAR)
-tar: tools
-	$(TAR) $(TAR).sha512
+$(TAR).sha512: $(TAR)
+	openssl dgst -sha512 -hex $(TAR) >$@
 
-count: TOOLS += $(COUNT)
-count: tools
-	$(COUNT) src tests
+$(TAR): $(SRC) Makefile LICENSE.md
+	$(MKDIR) $(@D)
+	$(MKDIR) $(DIST_DIR)
+	$(INSTALL) -m 0644 $(SRC) $(DIST_DIR)
+	$(INSTALL) -m 0644 Makefile LICENSE.md $(DIST_DIR)
+	tar zcf $@ $(DIST_DIR)
+	$(RM) -rf $(DIST_DIR)
+
+tar: tools $(TAR).sha512
 
 help:
 	@echo "usage: make [OPTIONS] <target>"
-	@echo "  Options:"
-	@echo "    > VERBOSE Show verbose output for Make rules. Default 1. Disable with 0."
 	@echo "Targets:"
 	@echo "  debug: Builds all with debug flags"
 	@echo "  debug-tsan: Builds all with debug and threadsanitizer"
@@ -184,4 +180,3 @@ help:
 	@echo "  print-%: Print value"
 	@echo "  info-%: Print recipe"
 	@echo "  tar: Package source files"
-
