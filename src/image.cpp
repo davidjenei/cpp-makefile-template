@@ -1,4 +1,4 @@
-#include <png.hpp>
+#include <png++/png.hpp>
 
 #include "image.hpp"
 

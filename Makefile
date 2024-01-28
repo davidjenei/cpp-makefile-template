@@ -4,19 +4,15 @@ VERSION = 1.0.0
 EXEC_DIR = $(BUILD_DIR)/exec
 EXEC = $(EXEC_DIR)/$(PROJECT)
 
-TEST_EXEC = $(EXEC_DIR)/tests
-LIB = $(OBJ_DIR)/lib$(PROJECT).a
-
-TAR = $(BUILD_DIR)/$(PROJECT).tar.gz
-
 BUILD_DIR = build
-DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 
 #################################################################################
 # Compiler and linker settings
 #################################################################################
 
 # TODO: -D_GLIBCXX_ASSERTIONS
+
+#CXX = clang++-15
 CXXFLAGS = -std=c++17
 LDFLAGS =
 INCLUDE = -Iinclude/
@@ -38,12 +34,10 @@ OBJ_DIR = $(BUILD_DIR)/objects
 OBJ_DIRS = $(addprefix $(OBJ_DIR)/, $(sort $(dir $(SRC) $(SRC_TESTS))))
 
 OBJ = $(SRC:%.cpp=$(OBJ_DIR)/%.o)
-OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
 DEPS = $(OBJ:.o=.d)
 
-.PHONY: all test
+.PHONY: all
 all: $(EXEC)
-test: $(TEST_EXEC)
 
 $(EXEC_DIR) $(OBJ_DIRS):
 	$(MKDIR) $(@)
@@ -54,20 +48,36 @@ $(OBJ_DIR)/%.o: %.cpp $(BUILD_DIR)/.cxx_flags | $(OBJ_DIRS)
 $(EXEC): $(OBJ) | $(EXEC_DIR)
 	$(CXX) $(CXXFLAGS) -o $(EXEC) $^ $(LDFLAGS)
 
-$(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
-	$(AR) rcs $(LIB) $^
-
-$(TEST_EXEC): $(OBJ_TESTS) $(LIB) | $(EXEC_DIR)
-	$(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
-
 # Set a flag for a specific object
 $(OBJ_DIR)/src/image.o: private CXXFLAGS += -Wall
+
+-include $(DEPS)
 
 .PHONY: force
 build/.cxx_flags: force | $(EXEC_DIR)
 	-@echo '$(CXXFLAGS)' | cmp -s - $@ || echo '$(CXXFLAGS)' > $@
 
--include $(DEPS)
+#################################################################################
+# Test
+#################################################################################
+
+TEST_EXEC = $(EXEC_DIR)/tests
+LIB = $(OBJ_DIR)/lib$(PROJECT).a
+
+$(LIB): $(filter-out $(OBJ_DIR)/src/main.o, $(OBJ))
+	$(AR) rcs $(LIB) $^
+
+OBJ_TESTS = $(SRC_TESTS:%.cpp=$(OBJ_DIR)/%.o)
+
+$(TEST_EXEC): $(OBJ_TESTS) $(LIB) | $(EXEC_DIR)
+	$(CXX) $(CXXFLAGS) -o $(TEST_EXEC) $(OBJ_TESTS) $(LDFLAGS) -L$(OBJ_DIR) -l$(PROJECT)
+
+.PHONY: test
+test: $(TEST_EXEC)
+
+#################################################################################
+# Variants
+#################################################################################
 
 .PHONY: harden debug release debug-tsan debug-asan
 harden: CXXFLAGS += -D_GLIBCXX_ASSERTIONS
@@ -147,8 +157,12 @@ print-%:
 info-%:
 	$(MAKE) --no-print-directory --dry-run --always-make $*
 
+TAR = $(BUILD_DIR)/$(PROJECT).tar.gz
+
 $(TAR).sha512: $(TAR)
 	openssl dgst -sha512 -hex $(TAR) >$@
+
+DIST_DIR = .dist/$(PROJECT)-$(VERSION)
 
 $(TAR): $(SRC) Makefile LICENSE.md
 	$(MKDIR) $(@D)

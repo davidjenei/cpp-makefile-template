@@ -1,4 +1,4 @@
-#include <png.hpp>
+#include <png++/png.hpp>
 
 class pixel_generator
   : public png::generator<png::gray_pixel_1, pixel_generator>
